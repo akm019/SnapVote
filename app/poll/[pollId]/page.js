@@ -143,7 +143,7 @@ export default function PollPage() {
           </button>
         </div>
       ) : (
-        <PollResults options={poll.options} />
+        <PollResults options={poll.options} pollId={poll._id} />
       )}
 
       {/* Admin Controls */}

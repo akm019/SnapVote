@@ -1,14 +1,12 @@
-// app/api/polls/[pollId]/route.js
 import dbConnect from '@/app/lib/dbConnect';
 import Poll from '@/app/models/Poll';
 import { NextResponse } from 'next/server';
 
 export async function GET(request, { params }) {
   await dbConnect();
-  const { pollId } = params;
+  const { pollId } = await params;
 
   const poll = await Poll.findById(pollId);
-  console.log(poll.isActive);
   if (!poll) {
     return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
   }
@@ -18,7 +16,7 @@ export async function GET(request, { params }) {
 
 export async function PATCH(request, { params }) {
   await dbConnect();
-  const { pollId } = params;
+  const { pollId } = await params;
   const { isActive, isPaused } = await request.json();
 
   const poll = await Poll.findById(pollId);
@@ -41,40 +39,62 @@ export async function PATCH(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  await dbConnect();
-  const { pollId } = params;
-  const { optionIndex, sessionId } = await request.json();
+  try {
+    await dbConnect();
+    const { pollId } = await params;
+    const { optionIndex, sessionId } = await request.json();
 
-  const poll = await Poll.findById(pollId);
+    const poll = await Poll.findById(pollId);
 
-  if (!poll) {
-    return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
+    if (!poll) {
+      return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
+    }
+
+    // Check if the poll is active
+    if (!poll.isActive) {
+      return NextResponse.json(
+        { error: 'This poll is no longer available.' },
+        { status: 400 }
+      );
+    }
+
+    // Check if the poll is paused
+    if (poll.isPaused) {
+      return NextResponse.json(
+        { error: 'This poll is currently paused.' },
+        { status: 400 }
+      );
+    }
+
+    if (optionIndex < 0 || optionIndex >= poll.options.length) {
+      return NextResponse.json({ error: 'Invalid option' }, { status: 400 });
+    }
+
+    poll.voters = poll.voters || [];
+
+    if (poll.voters.includes(sessionId)) {
+      return NextResponse.json(
+        { error: 'You have already voted' },
+        { status: 400 }
+      );
+    }
+
+    // Increase the vote count
+    poll.options[optionIndex].votes += 1;
+    poll.voters.push(sessionId);
+    await poll.save();
+
+    // Emit WebSocket update
+    if (global.io) {
+      global.io.to(pollId).emit('voteUpdate', poll.options);
+    }
+
+    return NextResponse.json(poll);
+  } catch (error) {
+    console.error('Error updating vote:', error);
+    return NextResponse.json(
+      { error: 'Error updating vote' },
+      { status: 500 }
+    );
   }
-
-  // Check if the poll is active
-  if (!poll.isActive) {
-    return NextResponse.json({ error: 'This poll is no longer available.' }, { status: 400 });
-  }
-
-  // Check if the poll is paused
-  if (poll.isPaused) {
-    return NextResponse.json({ error: 'This poll is currently paused.' }, { status: 400 });
-  }
-
-  if (optionIndex < 0 || optionIndex >= poll.options.length) {
-    return NextResponse.json({ error: 'Invalid option' }, { status: 400 });
-  }
-
-  poll.voters = poll.voters || [];
-
-  if (poll.voters.includes(sessionId)) {
-    return NextResponse.json({ error: 'You have already voted' }, { status: 400 });
-  }
-
-  // Increase the vote count
-  poll.options[optionIndex].votes += 1;
-  poll.voters.push(sessionId);
-  await poll.save();
-
-  return NextResponse.json(poll);
 }

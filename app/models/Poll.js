@@ -7,7 +7,7 @@ const OptionSchema = new mongoose.Schema({
 });
 
 const PollSchema = new mongoose.Schema({
-  sessionId: String, // Admin's session ID
+  sessionId: String, // Admin's session ID (fingerprint generated uuid)
   question: String,
   options: [OptionSchema],
   voters: { type: [String], default: [] },
